@@ -47,13 +47,6 @@ function getHtmlWithCurl($url) {
     return $body;
 }
 
-function buildCookieString($cookieArray) {
-    $pairs = [];
-    foreach ($cookieArray as $k => $v) {
-        $pairs[] = "$k=$v";
-    }
-    return implode('; ', $pairs);
-}
 
 function extractFromHtml($pattern, $html, $errorMsg) {
     if (!preg_match($pattern, $html, $matches)) {
