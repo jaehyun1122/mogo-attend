@@ -5,6 +5,8 @@
 date_default_timezone_set("Asia/Seoul");
 header('Content-Type: application/json');
 
+require_once __DIR__ . '/../app/functions.php';
+
 loadEnv(); // .env 환경변수 로드
 
 $CONFIG = [
@@ -21,79 +23,6 @@ $CONFIG = [
     'captcha_check_interval' => (int)getenv('CAPTCHA_CHECK_INTERVAL')
 ];
 
-// -------------------------------
-// 유틸 함수 정의
-// -------------------------------
-function loadEnv($path = __DIR__ . '../.env') {
-    if (!file_exists($path)) return;
-    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    foreach ($lines as $line) {
-        if (strpos(trim($line), '#') === 0 || !strpos($line, '=')) continue;
-        list($key, $value) = explode('=', $line, 2);
-        putenv(trim($key) . '=' . trim($value));
-    }
-}
-
-function sendResponse($status, $msg, $result = null) {
-    echo json_encode([
-        "status" => $status,
-        "msg" => $msg,
-        "time" => date("Y-m-d H:i:s"),
-        "result" => $result
-    ]);
-    exit;
-}
-
-function httpPostWithSession($url, $data = [], $isJson = false, $cookie = '') {
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_HEADER, true);
-
-    if ($isJson) {
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-    } else {
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/x-www-form-urlencoded"]);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
-    }
-
-    if ($cookie) {
-        curl_setopt($ch, CURLOPT_COOKIE, $cookie);
-    }
-
-    $response = curl_exec($ch);
-    $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-    curl_close($ch);
-
-    $header = substr($response, 0, $headerSize);
-    $body = substr($response, $headerSize);
-
-    $cookies = [];
-    if (preg_match_all('/^Set-Cookie:\s*([^;=]+=[^;]+);/mi', $header, $matches)) {
-        foreach ($matches[1] as $cookiePair) {
-            list($k, $v) = explode('=', $cookiePair, 2);
-            $cookies[trim($k)] = trim($v);
-        }
-    }
-
-    return ['body' => $body, 'cookies' => $cookies];
-}
-
-function extractFromHtml($pattern, $html, $errorMsg) {
-    if (!preg_match($pattern, $html, $matches)) {
-        sendResponse(2, $errorMsg);
-    }
-    return $matches[1];
-}
-
-function buildCookieString($cookieArray) {
-    $pairs = [];
-    foreach ($cookieArray as $k => $v) {
-        $pairs[] = "$k=$v";
-    }
-    return implode('; ', $pairs);
-}
 
 // -------------------------------
 // API Key 인증
