@@ -44,11 +44,11 @@ CAPTCHA_CHECK_INTERVAL=2     # 캡차 응답 체크 간격(초)
 | API_KEY                | 외부 요청 인증용 임의 문자열           | mysecretkey123                    |
 | LOGIN_ID, LOGIN_PW     | 출석 사이트 로그인 정보                | mogo123 / passw0rd                |
 | CAPTCHA_API_KEY        | 2Captcha API 키                        | 1234567890abcdef                  |
-| LOGIN_URL              | 로그인 폼 요청 URL                     | 기본설정정 (건들 필요 없음) |
-| TARGET_PAGE_URL        | 출석 대상 메인 페이지 URL              | 기본설정정 (건들 필요 없음) |
-| ATTENDANCE_URL         | 실제 출석 처리 POST URL                | 기본설정정 (건들 필요 없음) |
-| SITE_URL               | 출석 페이지(캡차 sitekey 추출용)       | 기본설정정 (건들 필요 없음) |
-| CAPTCHA_SERVICE_URL    | 2Captcha API 기본값                    | 기본설정정 (건들 필요 없음) |
+| LOGIN_URL              | 로그인 폼 요청 URL                     | 기본설정 (건들 필요 없음) |
+| TARGET_PAGE_URL        | 출석 대상 메인 페이지 URL              | 기본설정 (건들 필요 없음) |
+| ATTENDANCE_URL         | 실제 출석 처리 POST URL                | 기본설정 (건들 필요 없음) |
+| SITE_URL               | 출석 페이지(캡차 sitekey 추출용)       | 기본설정 (건들 필요 없음) |
+| CAPTCHA_SERVICE_URL    | 2Captcha API 기본값                    | 기본설정 (건들 필요 없음) |
 | ATTEND_INTERVAL        | 출석 가능 대기시간(초)                  | 60                                |
 | CAPTCHA_MAX_ATTEMPTS   | 캡차 최대 대기 횟수                    | 20                                |
 | CAPTCHA_CHECK_INTERVAL | 캡차 응답 체크 간격(초)                 | 2                                 |
@@ -73,22 +73,14 @@ LICENSE               # 라이선스
 
 ---
 
-## 🚀 4. 동작 방식 한눈에 보기
-
-- **auto/attend.php** : 무조건 출석을 시도 (캡차 자동 해결 포함)
-- **cron/last.php**   :
-    1. 출석 페이지에서 마지막 출석자와 남은 시간을 확인
-    2. 남은 시간이 `ATTEND_INTERVAL` 미만이고, 마지막 출석자가 내 아이디가 아니면 자동 출석
-    3. 조건이 안 맞으면 아무 동작 안 함
-
-## 🎲 6. 크론탭(자동화) 출석 설정 가이드
+## 🎲 4. 크론탭(자동화) 출석 설정 가이드
 
 MoGo 자동 출석 시스템은 여러가지 크론잡(자동화) 방식을 지원합니다:
 
 | 크론잡 파일         | 동작 방식 요약                                                                 | 추천 사용처                |
 |---------------------|------------------------------------------------------------------------------|----------------------------|
 | `cron/last.php`     | 마지막 출석자/남은 시간 체크 후, 조건 만족 시 무조건 출석                     | 일반 자동화, 1인 운영      |
-| `cron/random.php`   | last.php 조건 + 추가로 설정한 확률(`RANDOM_PERCENT`)에 해당할 때만 출석 시도 | 다중 서버/계정, 자연스러운 출석 패턴, 중복 방지 |
+| `cron/random.php`   | last.php 조건 + 추가로 설정한 확률(`RANDOM_PERCENT`)에 해당할 때만 출석 시도 | 자연스러운 출석 패턴, 중복 방지 |
 
 ### 환경변수 설정 예시
 
