@@ -42,7 +42,7 @@ if (!preg_match($winner_pattern, $html, $winner_matches)) {
 $winner_id = $winner_matches[1];
 
 // 남은 시간(초) 추출 (startCountdown 숫자)
-$js_countdown_pattern = '/startCountdown\((\d+)\)/';
+$js_countdown_pattern = '/remaining[^=]*=\s*["\']([^"\']+)["\']/';
 if (!preg_match($js_countdown_pattern, $html, $js_matches)) {
     sendResponse(2, "남은 시간을 가져올 수 없습니다.");
 }
