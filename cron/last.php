@@ -16,6 +16,15 @@ $CONFIG = [
     'attend_interval' => (int)getenv('ATTEND_INTERVAL'),
 ];
 
+// --------------------------------
+// 출석 실행
+// --------------------------------
+function attend()
+{
+    include __DIR__ . '/../auto/attend.php';
+    exit;
+}
+
 // -------------------------------
 // API Key 인증
 // -------------------------------
@@ -31,6 +40,12 @@ $htmlResp = httpPostWithSession($CONFIG['target_page_url']);
 $html = $htmlResp['body'];
 if ($html === false || empty($html)) {
     sendResponse(2, "웹페이지를 불러올 수 없습니다.");
+}
+
+// 아직 출석자가 없는 경우 바로 출석 처리
+$no_attendance_pattern = '/아직 아무도 출석하지 않았습니다/u';
+if (preg_match($no_attendance_pattern, $html)) {
+    attend();
 }
 
 // 우승자 아이디 추출
@@ -63,5 +78,5 @@ if ($remain_time > $CONFIG['attend_interval']) {
     ]);
 }
 
-// 출석 스크립트 실행 (auto/attend.php)
-include __DIR__ . '/../auto/attend.php';
+// 출석 스크립트 실행
+attend();
