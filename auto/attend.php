@@ -78,7 +78,8 @@ $mainCheck = httpPostWithSession($CONFIG['target_page_url'], [], false, $cookieS
 $mainHtml = $mainCheck['body'];
 
 // 로그인 여부 판별
-if (!preg_match('/안녕하세요,\s+([^\s<]+)님/', $mainHtml)) {
+$expectedGreeting = '안녕하세요, ' . $CONFIG['login_id'] . '님';
+if (strpos($mainHtml, $expectedGreeting) === false) {
     sendResponse(2, "로그인 결과를 확인할 수 없습니다.");
 }
 
