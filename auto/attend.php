@@ -33,63 +33,77 @@ if (trim($headers['x-api-key'] ?? '') !== trim($CONFIG['api_key'])) {
 }
 
 // -------------------------------
-// 초기 진입 → 세션 + CSRF 토큰 확보
+// 로그인 페이지 진입 → 세션 + 로그인 CSRF 토큰 확보
 // -------------------------------
-$initResponse = httpPostWithSession($CONFIG['target_page_url']);
-$initHtml = $initResponse['body'];
-$initCookies = $initResponse['cookies'];
-$cookieString = buildCookieString($initCookies);
+$loginPageResp = httpGetWithSession($CONFIG['login_url']);
+$loginPageHtml = $loginPageResp['body'];
+$loginPageCookies = $loginPageResp['cookies'];
+$cookieString = buildCookieString($loginPageCookies);
 
-$csrfToken = extractFromHtml(
-    '/attendanceToken[^=]*=\s*["\']([^"\']+)["\']/',
-    $initHtml,
-    "CSRF 토큰을 추출하지 못하였습니다."
+$loginCsrfToken = extractFromHtml(
+    '/<input\b(?=[^>]*name=["\']_csrf_token["\'])(?=[^>]*value=["\']([^"\']+)["\'])[^>]*>/i',
+    $loginPageHtml,
+    "로그인 CSRF 토큰을 추출하지 못하였습니다."
 );
 
+$loginRedirect = '/';
+if (preg_match('/<input\b(?=[^>]*name=["\']redirect["\'])(?=[^>]*value=["\']([^"\']*)["\'])[^>]*>/i', $loginPageHtml, $matches)) {
+    $loginRedirect = html_entity_decode($matches[1], ENT_QUOTES, 'UTF-8');
+}
+
 // -------------------------------
-// 로그인 요청 (동일 세션, 동일 CSRF 토큰 사용)
+// 로그인 요청 (동일 세션, 로그인 CSRF 토큰 사용)
 // -------------------------------
 $loginResp = httpPostWithSession($CONFIG['login_url'], [
-    'csrf_token' => $csrfToken,
-    'id' => $CONFIG['login_id'],
-    'password' => $CONFIG['login_pw']
+    '_csrf_token' => $loginCsrfToken,
+    'redirect' => $loginRedirect,
+    'email' => $CONFIG['login_id'],
+    'password' => $CONFIG['login_pw'],
+    'remember' => '1'
 ], false, $cookieString);
 
 $loginHtml = $loginResp['body'];
 $loginCookies = $loginResp['cookies'];
 
 // 로그인 오류 메시지별 판단
-if (strpos($loginHtml, "잘못된 요청입니다.") !== false) {
+if (strpos($loginHtml, "잘못된 요청입니다. 다시 시도해주세요.") !== false) {
     sendResponse(2, "로그인 요청이 잘못되었습니다.");
 }
 if (strpos($loginHtml, "아이디와 비밀번호를 입력해주세요.") !== false) {
     sendResponse(2, "아이디와 비밀번호를 입력해주시기 바랍니다.");
 }
-if (strpos($loginHtml, "아이디 또는 비밀번호가 올바르지 않습니다.") !== false) {
-    sendResponse(2, "로그인에 실패하였습니다. 아이디 또는 비밀번호가 올바르지 않습니다.");
+if (strpos($loginHtml, "이메일 또는 비밀번호가 올바르지 않습니다.") !== false) {
+    sendResponse(2, "로그인에 실패하였습니다. 이메일 또는 비밀번호가 올바르지 않습니다.");
 }
 
 // 쿠키 병합
-$allCookies = array_merge($initCookies, $loginCookies);
+$allCookies = array_merge($loginPageCookies, $loginCookies);
 $cookieString = buildCookieString($allCookies);
 
 // 로그인 성공 후 받은 쿠키로 메인 페이지 다시 요청
 $mainCheck = httpPostWithSession($CONFIG['target_page_url'], [], false, $cookieString);
 $mainHtml = $mainCheck['body'];
+$allCookies = array_merge($allCookies, $mainCheck['cookies']);
+$cookieString = buildCookieString($allCookies);
 
 // 로그인 여부 판별
 $expectedGreeting = '안녕하세요, ' . $CONFIG['login_id'] . '님';
-if (strpos($mainHtml, $expectedGreeting) === false) {
+if (strpos($mainHtml, $expectedGreeting) === false && strpos($mainHtml, 'name="email"') !== false) {
     sendResponse(2, "로그인 결과를 확인할 수 없습니다.");
 }
+
+$attendanceCsrfToken = extractFromHtml(
+    '/attendanceToken[^=]*=\s*["\']([^"\']+)["\']/',
+    $mainHtml,
+    "출석 CSRF 토큰을 추출하지 못하였습니다."
+);
 
 // -------------------------------
 // 캡차 sitekey 추출
 // -------------------------------
-$mainPage = httpPostWithSession($CONFIG['target_page_url'], [], false, $cookieString);
 $turnstileSitekey = extractFromHtml(
     '/sitekey:\s*[\'"]([^\'"]+)[\'"]/',
-    $mainPage['body'],
+    $mainHtml,
     "Sitekey를 추출하지 못하였습니다."
 );
 
@@ -142,7 +156,7 @@ if (!$captchaToken) {
 // 출석 요청
 // -------------------------------
 $attendResp = httpPostWithSession($CONFIG['attendance_url'], [
-    'csrf_token' => $csrfToken,
+    '_csrf_token' => $attendanceCsrfToken,
     'cf_turnstile_response' => $captchaToken
 ], false, $cookieString);
 
@@ -159,6 +173,6 @@ if (!isset($attendData['success'])) {
 // 성공 응답
 // -------------------------------
 sendResponse(1, "출석이 완료되었습니다.", [
-    'csrf_token' => $csrfToken,
+    '_csrf_token' => $attendanceCsrfToken,
     'captcha_token' => $captchaToken
 ]);

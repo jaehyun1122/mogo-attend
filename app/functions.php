@@ -32,26 +32,24 @@ function sendResponse($status, $msg, $result = null) {
     exit;
 }
 
-/**
- * 세션을 유지하며 POST 요청을 보내고, 응답 본문과 쿠키를 반환합니다.
- * @param string $url 요청할 URL
- * @param array $data POST 데이터
- * @param bool $isJson JSON 전송 여부
- * @param string $cookie 쿠키 문자열
- * @return array ['body' => string, 'cookies' => array]
- */
-function httpPostWithSession($url, $data = [], $isJson = false, $cookie = '') {
+function httpRequestWithSession($url, $data = [], $isJson = false, $cookie = '', $method = 'POST') {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_HEADER, true);
 
-    if ($isJson) {
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    $method = strtoupper($method);
+    if ($method === 'POST') {
+        curl_setopt($ch, CURLOPT_POST, true);
+
+        if ($isJson) {
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        } else {
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/x-www-form-urlencoded"]);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+        }
     } else {
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/x-www-form-urlencoded"]);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+        curl_setopt($ch, CURLOPT_HTTPGET, true);
     }
 
     if ($cookie) {
@@ -59,6 +57,12 @@ function httpPostWithSession($url, $data = [], $isJson = false, $cookie = '') {
     }
 
     $response = curl_exec($ch);
+    if ($response === false) {
+        $error = curl_error($ch);
+        curl_close($ch);
+        sendResponse(2, "HTTP 요청 중 오류가 발생하였습니다: {$error}");
+    }
+
     $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
     curl_close($ch);
 
@@ -74,6 +78,28 @@ function httpPostWithSession($url, $data = [], $isJson = false, $cookie = '') {
     }
 
     return ['body' => $body, 'cookies' => $cookies];
+}
+
+/**
+ * 세션을 유지하며 GET 요청을 보내고, 응답 본문과 쿠키를 반환합니다.
+ * @param string $url 요청할 URL
+ * @param string $cookie 쿠키 문자열
+ * @return array ['body' => string, 'cookies' => array]
+ */
+function httpGetWithSession($url, $cookie = '') {
+    return httpRequestWithSession($url, [], false, $cookie, 'GET');
+}
+
+/**
+ * 세션을 유지하며 POST 요청을 보내고, 응답 본문과 쿠키를 반환합니다.
+ * @param string $url 요청할 URL
+ * @param array $data POST 데이터
+ * @param bool $isJson JSON 전송 여부
+ * @param string $cookie 쿠키 문자열
+ * @return array ['body' => string, 'cookies' => array]
+ */
+function httpPostWithSession($url, $data = [], $isJson = false, $cookie = '') {
+    return httpRequestWithSession($url, $data, $isJson, $cookie, 'POST');
 }
 
 /**
