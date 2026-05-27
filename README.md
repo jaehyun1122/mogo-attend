@@ -1,197 +1,177 @@
-# 🛠 MoGo 자동 출석 시스템 완벽 가이드
+# MoGo 자동 출석
 
-이 문서는 **MoGo 출석 자동화 시스템**의 설치, 설정, 사용법을 처음부터 끝까지 쉽게 안내합니다.
+MoGo 출석 페이지의 로그인을 자동화하고, Cloudflare Turnstile CAPTCHA를 2Captcha로 처리한 뒤 출석 요청을 보내는 PHP 기반 자동 출석 스크립트입니다.
 
----
+## 주요 기능
 
-## ✅ 1. 준비물 및 설치
+- MoGo 계정 로그인 자동 처리
+- 로그인 및 출석 CSRF 토큰 추출
+- Cloudflare Turnstile CAPTCHA 2Captcha 연동
+- API Key 기반 호출 보호
+- 마지막 출석자와 남은 시간을 확인한 조건부 출석
+- 설정한 확률에 따라 실행하는 랜덤 출석
 
-1. PHP 7.4 이상이 설치된 서버(웹호스팅, VPS, NAS 등)
-2. [2Captcha](https://2captcha.com) 회원가입 및 최소 $3 충전
-3. 출석 대상 사이트의 로그인 정보(ID/PW)
-4. 본 프로젝트 파일 다운로드 및 업로드
+## 요구사항
 
----
+- PHP 7.4 이상
+- PHP cURL 확장
+- 웹 서버 또는 PHP 실행 환경
+- 2Captcha 계정 및 API Key
+- MoGo 로그인 계정
 
-## ✅ 2. 환경설정 (.env) 작성법
+## 프로젝트 구조
 
-루트 폴더에 `.env` 파일을 아래 예시처럼 만듭니다. **(모든 항목을 빠짐없이 입력!)**
+```text
+.
+├── app/
+│   └── functions.php       # 공통 함수: env 로드, HTTP 요청, JSON 응답 등
+├── auto/
+│   └── attend.php          # 로그인, CAPTCHA 처리, 출석 요청 실행
+├── cron/
+│   ├── last.php            # 마지막 출석 정보와 대기 시간을 확인 후 출석
+│   └── random.php          # last.php 조건에 확률 조건을 추가해 출석
+├── .env.example            # 환경변수 예시
+├── README.md
+└── LICENSE
+```
+
+## 설치
+
+1. 저장소를 서버에 업로드하거나 클론합니다.
+
+```bash
+git clone https://github.com/jaehyun1122/mogo-attend.git
+cd mogo-attend
+```
+
+2. `.env.example` 파일을 복사해 `.env` 파일을 만듭니다.
+
+```bash
+cp .env.example .env
+```
+
+3. `.env` 값을 실제 환경에 맞게 입력합니다.
 
 ```env
-# [필수] 사용자 정의 API 키 (임의의 문자열, 외부 요청 인증용)
 API_KEY=your_custom_api_key
-
-# [필수] 로그인 계정 정보
 LOGIN_ID=your_email@example.com
 LOGIN_PW=your_password
 
-# [필수] 2Captcha API 키 (https://2captcha.com에서 확인)
+LOGIN_URL=https://mogo.kr/account/login.php
+TARGET_PAGE_URL=https://mogo.kr/catch_tail/?action=main
+ATTENDANCE_URL=https://mogo.kr/catch_tail/?action=attendance
+SITE_URL=https://mogo.kr/catch_tail
+
 CAPTCHA_API_KEY=your_2captcha_api_key
+CAPTCHA_SERVICE_URL=https://2captcha.com
+CAPTCHA_MAX_ATTEMPTS=6
+CAPTCHA_CHECK_INTERVAL=5
 
-# [권장] 출석 관련 옵션 (기본값 사용 가능)
-ATTEND_INTERVAL=60           # 출석 가능 대기시간(초)
-CAPTCHA_MAX_ATTEMPTS=20      # 캡차 최대 대기 횟수
-CAPTCHA_CHECK_INTERVAL=2     # 캡차 응답 체크 간격(초)
+ATTEND_INTERVAL=3600
+RANDOM_PERCENT=100
 ```
 
-> **TIP:**
-> - 2Captcha 키는 [여기서 확인](https://2captcha.com/enterpage) 가능합니다.
+## 환경변수
 
-### 환경변수 설명표
+| 변수명 | 필수 | 설명 | 예시 |
+| --- | --- | --- | --- |
+| `API_KEY` | 예 | 스크립트 호출 시 `x-api-key` 헤더로 검증할 키 | `my-secret-key` |
+| `LOGIN_ID` | 예 | MoGo 로그인 아이디 | `user@example.com` |
+| `LOGIN_PW` | 예 | MoGo 로그인 비밀번호 | `password` |
+| `LOGIN_URL` | 예 | 로그인 요청 URL | `https://mogo.kr/account/login.php` |
+| `TARGET_PAGE_URL` | 예 | 출석 메인 페이지 URL | `https://mogo.kr/catch_tail/?action=main` |
+| `ATTENDANCE_URL` | 예 | 출석 POST 요청 URL | `https://mogo.kr/catch_tail/?action=attendance` |
+| `SITE_URL` | 예 | Turnstile CAPTCHA가 표시되는 페이지 URL | `https://mogo.kr/catch_tail` |
+| `CAPTCHA_API_KEY` | 예 | 2Captcha API Key | `xxxxxxxx` |
+| `CAPTCHA_SERVICE_URL` | 예 | 2Captcha API 기본 URL | `https://2captcha.com` |
+| `CAPTCHA_MAX_ATTEMPTS` | 아니오 | CAPTCHA 결과 확인 최대 횟수 | `6` |
+| `CAPTCHA_CHECK_INTERVAL` | 아니오 | CAPTCHA 결과 확인 간격, 초 단위 | `5` |
+| `ATTEND_INTERVAL` | 아니오 | 남은 시간이 이 값 이하일 때 출석 시도, 초 단위 | `3600` |
+| `RANDOM_PERCENT` | 아니오 | `cron/random.php`에서 사용할 출석 실행 확률 | `100` |
 
-| 변수명                  | 설명                                   | 예시값 또는 비고                  |
-|------------------------|----------------------------------------|-----------------------------------|
-| API_KEY                | 외부 요청 인증용 임의 문자열           | mysecretkey123                    |
-| LOGIN_ID, LOGIN_PW     | 출석 사이트 로그인 정보                | your_email@example.com / passw0rd |
-| CAPTCHA_API_KEY        | 2Captcha API 키                        | 1234567890abcdef                  |
-| LOGIN_URL              | 로그인 폼 요청 URL                     | 기본설정 (건들 필요 없음) |
-| TARGET_PAGE_URL        | 출석 대상 메인 페이지 URL              | 기본설정 (건들 필요 없음) |
-| ATTENDANCE_URL         | 실제 출석 처리 POST URL                | 기본설정 (건들 필요 없음) |
-| SITE_URL               | 출석 페이지(캡차 sitekey 추출용)       | 기본설정 (건들 필요 없음) |
-| CAPTCHA_SERVICE_URL    | 2Captcha API 기본값                    | 기본설정 (건들 필요 없음) |
-| ATTEND_INTERVAL        | 출석 가능 대기시간(초)                  | 60                                |
-| CAPTCHA_MAX_ATTEMPTS   | 캡차 최대 대기 횟수                    | 20                                |
-| CAPTCHA_CHECK_INTERVAL | 캡차 응답 체크 간격(초)                 | 2                                 |
-| RANDOM_PERCENT         | 랜덤 출석 확률 (1~100, % 단위)          | 30                                |
+## 실행 방법
 
-> **참고:** 로그인/출석 관련 URL 등은 기본값이 이미 코드에 설정되어 있으므로, 대부분의 사용자는 별도로 수정할 필요가 없습니다. 출석 대기시간(ATTEND_INTERVAL) 등 시간 관련 값만 필요에 따라 수정하면 됩니다.
+모든 엔드포인트는 `x-api-key` 헤더가 필요합니다. 헤더 값은 `.env`의 `API_KEY`와 같아야 합니다.
 
----
+### 직접 출석
 
-## 📁 3. 프로젝트 구조
-
-```
-auto/
-  └── attend.php      # 출석 처리 및 CAPTCHA 자동 해결
-cron/
-  └── last.php        # 마지막 출석자/남은 시간 확인 후 자동 출석
-  └── random.php      # last.php 에서 랜덤 출석 기능을 추가한 크론잡
-.env                  # 환경설정 파일 (반드시 루트에 위치)
-README.md             # 설명서
-LICENSE               # 라이선스
-```
-
----
-
-## 🎲 4. 크론탭(자동화) 출석 설정 가이드
-
-MoGo 자동 출석 시스템은 여러가지 크론잡(자동화) 방식을 지원합니다:
-
-| 크론잡 파일         | 동작 방식 요약                                                                 | 추천 사용처                |
-|---------------------|------------------------------------------------------------------------------|----------------------------|
-| `cron/last.php`     | 마지막 출석자/남은 시간 체크 후, 조건 만족 시 무조건 출석                     | 일반 자동화, 1인 운영      |
-| `cron/random.php`   | last.php 조건 + 추가로 설정한 확률(`RANDOM_PERCENT`)에 해당할 때만 출석 시도 | 자연스러운 출석 패턴, 중복 방지 |
-
-### 환경변수 설정 예시
-
-`.env` 파일에 아래 항목을 필요에 따라 추가/수정하세요:
-
-```env
-# [필수] 사용자 정의 API 키 (임의의 문자열, 외부 요청 인증용)
-API_KEY=your_custom_api_key
-
-# [필수] 로그인 계정 정보
-LOGIN_ID=your_email@example.com
-LOGIN_PW=your_password
-
-# [필수] 2Captcha API 키
-CAPTCHA_API_KEY=your_2captcha_api_key
-
-# [권장] 출석 관련 옵션
-ATTEND_INTERVAL=60           # 출석 가능 대기시간(초)
-
-# [선택] 랜덤 출석 확률 (1~100, % 단위, random.php 사용 시)
-RANDOM_PERCENT=30
-```
-
-- `RANDOM_PERCENT`는 `random.php`에서만 사용되며, 1~100(%) 사이 값으로 확률을 지정합니다.
-- 값이 없거나 0이면 랜덤 출석이 동작하지 않습니다.
-
-### 크론탭 등록 예시
-
-#### 1시간마다 실행
-```cron
-0 * * * * curl -s 'https://yourdomain.com/cron/last.php' -H 'x-api-key:your_custom_api_key'
-```
-
-#### 1시간마다 랜덤 출석 실행
-```cron
-0 * * * * curl -s 'https://yourdomain.com/cron/random.php' -H 'x-api-key:your_custom_api_key'
-```
-
-- 윈도우는 [작업 스케줄러](https://learn.microsoft.com/ko-kr/windows/win32/taskschd/task-scheduler-start-page) 참고
-
-### 동작 방식 비교
-
-- **last.php**
-    1. 출석 페이지에서 마지막 출석자와 남은 시간을 확인
-    2. 남은 시간이 `ATTEND_INTERVAL` 미만이고, 마지막 출석자가 내 아이디가 아니면 출석
-    3. 조건이 안 맞으면 아무 동작 안 함
-- **random.php**
-    1. 위 last.php의 모든 조건을 만족해야 함
-    2. 추가로, `RANDOM_PERCENT` 확률에 해당할 때만 출석 시도
-    3. 확률 미달 시 아무 동작도 하지 않음
-
-> **TIP:** 여러 서버/계정이 동시에 출석을 시도할 때, 랜덤 출석을 활용하면 중복 출석을 줄이고 자연스러운 출석 패턴을 만들 수 있습니다.
-
----
-
-## 📡 5. API 사용법 (직접 출석)
-
-### 1. 출석 직접 요청 (캡차 자동 해결)
+CAPTCHA를 처리한 뒤 바로 출석을 시도합니다.
 
 ```bash
-curl -s 'https://yourdomain.com/auto/attend.php' \
-     -H 'x-api-key:your_custom_api_key'
+curl -s "https://your-domain.com/auto/attend.php" \
+  -H "x-api-key: your_custom_api_key"
 ```
 
-- 위 명령은 무조건 출석을 시도합니다. (캡차 자동 해결)
-- **실패 예시:** 이미 출석했거나, 캡차 실패, 로그인 실패 등
+### 조건부 출석
 
-### 2. 자동화 추천: 마지막 출석자/시간 체크 후 출석
+마지막 출석자, 남은 시간, `ATTEND_INTERVAL` 값을 확인한 뒤 조건을 만족할 때만 출석합니다.
 
 ```bash
-curl -s 'https://yourdomain.com/cron/last.php' \
-     -H 'x-api-key:your_custom_api_key'
+curl -s "https://your-domain.com/cron/last.php" \
+  -H "x-api-key: your_custom_api_key"
 ```
 
-- 이 경로는 "내가 마지막 출석자가 아니고, 출석 가능 시간이면"만 출석을 시도합니다.
-- **자동화(크론탭)에는 이 경로를 추천합니다!**
+### 랜덤 출석
 
----
+`cron/last.php`의 조건을 먼저 확인한 뒤, `RANDOM_PERCENT` 확률에 해당할 때만 출석합니다.
 
-## ⏰ 6. 크론탭(자동화) 설정 예제
+```bash
+curl -s "https://your-domain.com/cron/random.php" \
+  -H "x-api-key: your_custom_api_key"
+```
 
-> **권장:** cron/last.php 자동화는 1시간 또는 30분마다 주기적으로 실행하는 것을 추천합니다.
+## Cron 등록 예시
 
-### 1시간마다 실행 예시
+서버 환경에서 주기적으로 실행하려면 crontab에 등록합니다.
+
 ```cron
-0 * * * * curl -s 'https://yourdomain.com/cron/last.php' -H 'x-api-key:your_custom_api_key'
+# 1시간마다 조건부 출석 확인
+0 * * * * curl -s "https://your-domain.com/cron/last.php" -H "x-api-key: your_custom_api_key"
+
+# 30분마다 랜덤 출석 확인
+*/30 * * * * curl -s "https://your-domain.com/cron/random.php" -H "x-api-key: your_custom_api_key"
 ```
 
-### 30분마다 실행 예시
-```cron
-*/30 * * * * curl -s 'https://yourdomain.com/cron/last.php' -H 'x-api-key:your_custom_api_key'
+Windows 환경에서는 작업 스케줄러를 사용해 동일한 URL을 주기적으로 호출하면 됩니다.
+
+## 응답 형식
+
+스크립트는 JSON 형식으로 응답합니다.
+
+```json
+{
+  "status": 1,
+  "msg": "출석이 완료되었습니다.",
+  "time": "2026-05-27 22:00:00",
+  "result": {}
+}
 ```
 
-- 크론탭 편집: `crontab -e` (리눅스 기준)
-- 윈도우는 [작업 스케줄러](https://learn.microsoft.com/ko-kr/windows/win32/taskschd/task-scheduler-start-page) 참고
+| 필드 | 설명 |
+| --- | --- |
+| `status` | `1`은 성공, `2`는 실패 또는 실행 조건 미충족 |
+| `msg` | 처리 결과 메시지 |
+| `time` | 서버 기준 응답 시간 |
+| `result` | 추가 결과 데이터 |
 
----
+## 동작 흐름
 
-## ⚠️ 7. 주의사항 및 팁
+1. `.env` 파일에서 설정값을 로드합니다.
+2. 요청 헤더의 `x-api-key`를 검증합니다.
+3. MoGo 로그인 페이지에서 CSRF 토큰과 세션 쿠키를 가져옵니다.
+4. 설정된 계정으로 로그인합니다.
+5. 출석 페이지에서 출석 토큰과 Turnstile sitekey를 추출합니다.
+6. 2Captcha에 Turnstile 해결 작업을 등록하고 결과를 대기합니다.
+7. CAPTCHA 토큰과 출석 토큰으로 출석 요청을 보냅니다.
+8. 처리 결과를 JSON으로 반환합니다.
 
-- `.env` 파일은 반드시 비공개로 관리하세요! (API 키, 로그인 정보 포함)
-- 2Captcha는 유료 서비스입니다. 테스트 시 과금에 유의하세요.
-- 출석 요청 시 Cloudflare Turnstile CAPTCHA가 반드시 발생하므로 2Captcha API 없이는 동작하지 않습니다.
-- 2Captcha는 실제 사람이 푸는 방식이라 최대 20초까지 걸릴 수 있습니다. (평균 13초)
-- 출석이 정상 처리되면 JSON으로 결과가 반환됩니다.
+## 보안 주의사항
 
----
+- `.env` 파일에는 로그인 정보와 API Key가 포함되므로 공개 저장소에 커밋하지 마세요.
+- `API_KEY`는 충분히 길고 추측하기 어려운 값으로 설정하세요.
+- 서버 접근 로그에 API Key가 노출되지 않도록 관리하세요.
+- 2Captcha는 유료 서비스이므로 호출 주기와 실패 재시도 횟수를 적절히 설정하세요.
 
-## ⭐️ 8. 기여 & 문의
+## 라이선스
 
-이 프로젝트가 도움이 되었다면 GitHub 저장소에 **스타(★)** 부탁드립니다!  
-문제나 개선 사항은 **[Issues 탭](https://github.com/jaehyun1122/mogo-attend/issues)**에 남겨주세요.
-
-감사합니다!
+이 프로젝트는 [LICENSE](LICENSE) 파일의 라이선스를 따릅니다.
