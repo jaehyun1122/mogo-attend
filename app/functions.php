@@ -107,13 +107,23 @@ function httpPostWithSession($url, $data = [], $isJson = false, $cookie = '') {
  * @param string $pattern 정규표현식 패턴
  * @param string $html HTML 문자열
  * @param string $errorMsg 실패 시 반환할 메시지
+ * @param bool $cleanText HTML 태그 제거, 엔티티 디코딩, 공백 정리 여부
  * @return string 추출된 값
  */
-function extractFromHtml($pattern, $html, $errorMsg) {
+function extractFromHtml($pattern, $html, $errorMsg, $cleanText = false) {
     if (!preg_match($pattern, $html, $matches)) {
         sendResponse(2, $errorMsg);
     }
-    return $matches[1];
+
+    $value = $matches[1];
+
+    if ($cleanText) {
+        $value = html_entity_decode(strip_tags($value), ENT_QUOTES, 'UTF-8');
+        $value = preg_replace('/\s+/u', ' ', $value);
+        $value = trim($value);
+    }
+
+    return $value;
 }
 
 /**

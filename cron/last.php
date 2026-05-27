@@ -49,23 +49,36 @@ if (preg_match($no_attendance_pattern, $html)) {
 }
 
 // 우승자 아이디 추출
-$winner_pattern = '/<p>(.*?)님의 우승까지<br>/u';
-if (!preg_match($winner_pattern, $html, $winner_matches)) {
-    sendResponse(2, "우승자 아이디를 가져올 수 없습니다.");
-}
-$winner_id = $winner_matches[1];
+$winner_pattern = '/<p\b[^>]*>\s*(.*?)\s*님의\s*우승까지\s*<br\b[^>]*>/isu';
+$winner_id = extractFromHtml(
+    $winner_pattern,
+    $html,
+    "우승자 아이디를 가져올 수 없습니다.",
+    true
+);
+
+// 내 닉네임 추출
+$nickname_pattern = '/안녕하세요,\s*(.*?)\s*님/u';
+$my_nickname = extractFromHtml(
+    $nickname_pattern,
+    $html,
+    "내 닉네임을 가져올 수 없습니다.",
+    true
+);
 
 // 남은 시간(초) 추출 (startCountdown 숫자)
 $js_countdown_pattern = '/\b(?:var|let|const)\s+remaining\s*=\s*(\d+)/';
-if (!preg_match($js_countdown_pattern, $html, $js_matches)) {
-    sendResponse(2, "남은 시간을 가져올 수 없습니다.");
-}
-$remain_time = (int)$js_matches[1];
+$remain_time = (int)extractFromHtml(
+    $js_countdown_pattern,
+    $html,
+    "남은 시간을 가져올 수 없습니다."
+);
 
-// 내 아이디와 우승자 아이디가 동일한 경우
-if ($CONFIG['login_id'] === $winner_id) {
-    sendResponse(2, "우승자와 로그인 아이디가 동일합니다.", [
+// 내 닉네임과 우승자 닉네임이 동일한 경우
+if ($my_nickname === $winner_id) {
+    sendResponse(2, "우승자와 내 닉네임이 동일합니다.", [
         "login_id" => $CONFIG['login_id'],
+        "nickname" => $my_nickname,
         "winner_id" => $winner_id
     ]);
 }
