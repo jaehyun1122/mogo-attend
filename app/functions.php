@@ -103,6 +103,85 @@ function httpPostWithSession($url, $data = [], $isJson = false, $cookie = '') {
 }
 
 /**
+ * 로그인 후 인증 쿠키를 반환합니다.
+ * @param string $loginUrl 로그인 페이지 URL
+ * @param string $loginId 로그인 아이디
+ * @param string $loginPw 로그인 비밀번호
+ * @return array ['cookies' => array, 'cookie_string' => string]
+ */
+function loginAndGetSession($loginUrl, $loginId, $loginPw) {
+    $loginPageResp = httpGetWithSession($loginUrl);
+    $loginPageHtml = $loginPageResp['body'];
+    $loginPageCookies = $loginPageResp['cookies'];
+    $cookieString = buildCookieString($loginPageCookies);
+
+    $loginCsrfToken = extractFromHtml(
+        '/<input\b(?=[^>]*name=["\']_csrf_token["\'])(?=[^>]*value=["\']([^"\']+)["\'])[^>]*>/i',
+        $loginPageHtml,
+        "로그인 CSRF 토큰을 추출하지 못하였습니다."
+    );
+
+    $loginRedirect = '/';
+    if (preg_match('/<input\b(?=[^>]*name=["\']redirect["\'])(?=[^>]*value=["\']([^"\']*)["\'])[^>]*>/i', $loginPageHtml, $matches)) {
+        $loginRedirect = html_entity_decode($matches[1], ENT_QUOTES, 'UTF-8');
+    }
+
+    $loginResp = httpPostWithSession($loginUrl, [
+        '_csrf_token' => $loginCsrfToken,
+        'redirect' => $loginRedirect,
+        'email' => $loginId,
+        'password' => $loginPw,
+        'remember' => '1'
+    ], false, $cookieString);
+
+    $loginHtml = $loginResp['body'];
+    $loginCookies = $loginResp['cookies'];
+
+    if (strpos($loginHtml, "잘못된 요청입니다. 다시 시도해주세요.") !== false) {
+        sendResponse(2, "로그인 요청이 잘못되었습니다.");
+    }
+    if (strpos($loginHtml, "아이디와 비밀번호를 입력해주세요.") !== false) {
+        sendResponse(2, "아이디와 비밀번호를 입력해주시기 바랍니다.");
+    }
+    if (strpos($loginHtml, "이메일 또는 비밀번호가 올바르지 않습니다.") !== false) {
+        sendResponse(2, "로그인에 실패하였습니다. 이메일 또는 비밀번호가 올바르지 않습니다.");
+    }
+
+    $allCookies = array_merge($loginPageCookies, $loginCookies);
+
+    return [
+        'cookies' => $allCookies,
+        'cookie_string' => buildCookieString($allCookies)
+    ];
+}
+
+/**
+ * 로그인 세션 쿠키를 포함하여 페이지를 요청합니다.
+ * @param string $loginUrl 로그인 페이지 URL
+ * @param string $loginId 로그인 아이디
+ * @param string $loginPw 로그인 비밀번호
+ * @param string $pageUrl 요청할 페이지 URL
+ * @return array ['body' => string, 'cookies' => array, 'cookie_string' => string]
+ */
+function httpPostAuthenticatedPage($loginUrl, $loginId, $loginPw, $pageUrl) {
+    $session = loginAndGetSession($loginUrl, $loginId, $loginPw);
+
+    $pageResp = httpPostWithSession($pageUrl, [], false, $session['cookie_string']);
+    $allCookies = array_merge($session['cookies'], $pageResp['cookies']);
+    $cookieString = buildCookieString($allCookies);
+
+    if (preg_match('/name=["\']email["\']/i', $pageResp['body']) && preg_match('/name=["\']password["\']/i', $pageResp['body'])) {
+        sendResponse(2, "로그인 결과를 확인할 수 없습니다.");
+    }
+
+    return [
+        'body' => $pageResp['body'],
+        'cookies' => $allCookies,
+        'cookie_string' => $cookieString
+    ];
+}
+
+/**
  * HTML에서 정규표현식 패턴에 맞는 값을 추출합니다. 실패 시 sendResponse로 에러 반환.
  * @param string $pattern 정규표현식 패턴
  * @param string $html HTML 문자열
